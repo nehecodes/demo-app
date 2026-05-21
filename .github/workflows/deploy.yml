@@ -46,21 +46,21 @@ jobs:
             set -euo pipefail
             
             # Navigate to the explicit application directory path
-            cd /opt/demo-app/app
+            cd /opt/demo-app
             
             # Pull the latest changes from main
             git pull origin main
-
+            
             # Check and update dependencies dynamically within the app folder
             NEW_HASH=$(md5sum requirements.txt | cut -d' ' -f1)
             OLD_HASH=$(cat .req_hash 2>/dev/null || echo "")
             if [ "$OLD_HASH" != "$NEW_HASH" ]; then
-              venv/bin/python -m pip install --quiet -r requirements.txt
+              cd /app && venv/bin/python -m pip install --quiet -r requirements.txt
               echo "$NEW_HASH" > .req_hash
             fi
 
             # Restart the systemd application unit
-            sudo systemctl restart app
+            sudo systemctl restart app || sudo systemctl start app
           ENDSSH
 
           echo "deploy_ts=$(date +%s)" >> "$GITHUB_OUTPUT"
