@@ -17,6 +17,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
       - name: Capture commit and trigger timestamps
         id: timestamps
         run: |
@@ -27,34 +32,62 @@ jobs:
       - name: Build application
         id: build
         run: |
-          # TODO: replace with your actual build command, e.g.:
-          # pip install -r requirements.txt
+          # Install dependencies
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          
+          # Add your actual build commands here
+          # Example: python setup.py build
+          
           echo "build_end_ts=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Run tests
         id: test
         run: |
-          # TODO: replace with your actual test command, e.g.:
-          # pytest --ci
+          # Install test dependencies
+          pip install pytest pytest-cov
+
+          # Run tests with CI flag
+          pytest --ci --cov=.
+
           echo "test_end_ts=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.APP_SERVER_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Deploy to app server
         id: deploy
         run: |
-          eval "$(ssh-agent -s)"
-          echo "${{ secrets.SSH_KEY }}" | ssh-add -
+          # Copy application files to remote server
+          scp -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -r . appuser@${{ secrets.APP_SERVER_IP }}:/opt/demo-app/
 
-          ssh -o StrictHostKeyChecking=no appuser@${{ secrets.APP_SERVER_IP }} << 'ENDSSH'
+          # Run deployment commands on remote server
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              appuser@${{ secrets.APP_SERVER_IP }} << 'ENDSSH'
             set -euo pipefail
             cd /opt/demo-app
 
+            # Check if dependencies changed by comparing md5 hashes
             NEW_HASH=$(md5sum requirements.txt | cut -d' ' -f1)
             OLD_HASH=$(cat .req_hash 2>/dev/null || echo "")
+
+            # Install/update dependencies only if requirements.txt changed
             if [ "$OLD_HASH" != "$NEW_HASH" ]; then
+              echo "Dependencies changed. Installing..."
               venv/bin/python -m pip install --quiet -r requirements.txt
               echo "$NEW_HASH" > .req_hash
+            else
+              echo "Dependencies unchanged. Skipping pip install."
             fi
 
+            # Restart the application
             sudo systemctl restart app
           ENDSSH
 
