@@ -35,6 +35,7 @@ jobs:
         run: |
           # Your test commands here
           echo "test_end_ts=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "def test_fail(): assert False" > test_break.py
 
       - name: Deploy to app server
         id: deploy
